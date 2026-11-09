@@ -1,0 +1,17 @@
+# Only application source files belong in this repository.
+# Runtime data, local configuration, models, archives and build outputs stay local.
+*
+!/.gitignore
+!/run.py
+!/Start.command
+!/start.bat
+!/mailresponder/
+!/mailresponder/*.py
+!/tests/
+!/tests/test_*.py
+!/static/
+!/static/app.js
+!/static/editor.js
+!/static/styles.css
+!/static/index.html
+!/static/icon.svg
