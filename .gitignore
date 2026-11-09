@@ -1,7 +1,9 @@
-# Only application source files belong in this repository.
+# Only application source files and documentation belong in this repository.
 # Runtime data, local configuration, models, archives and build outputs stay local.
 *
 !/.gitignore
+!/README.md
+!/DOKUMENTATION.md
 !/run.py
 !/Start.command
 !/start.bat
