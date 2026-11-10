@@ -1,6 +1,6 @@
 # AI Mail Responder – Projektdokumentation
 
-Stand: 9. November 2026. Diese Dokumentation beschreibt die Python-Implementierung im Repository und soll die Einrichtung, Nutzung und Weiterentwicklung ohne vorherige Projektkenntnis ermöglichen.
+Stand: 10. November 2026. Diese Dokumentation beschreibt die Python-Implementierung im Repository und soll die Einrichtung, Nutzung und Weiterentwicklung ohne vorherige Projektkenntnis ermöglichen.
 
 ## Inhalt
 
@@ -116,7 +116,9 @@ Für diesen Entwicklerprototyp wird eine eigene OAuth-Konfiguration verwendet:
 
 Die Anmeldung nutzt PKCE und einen zufälligen, einmaligen `state` mit zehn Minuten Gültigkeit. Die Rückleitung erfolgt an `/oauth/callback` am lokalen App-Port. Das Google-Passwort wird nicht in der Anwendung gespeichert. Details zum Verfahren stehen in Googles [Dokumentation für Desktop-OAuth](https://developers.google.com/identity/protocols/oauth2/native-app).
 
-Google kann eine erneute Anmeldung verlangen, etwa nach Widerruf oder Ablauf der Freigabe. Ein eigenes Testprojekt ist keine abgeschlossene Google-Freigabe für den öffentlichen Vertrieb; dafür sind Googles jeweils geltende Anforderungen gesondert zu prüfen.
+Google kann eine erneute Anmeldung verlangen, etwa nach Widerruf oder Ablauf der Freigabe. Bei einer externen OAuth-App im Status „Testing“ laufen Refresh-Tokens für Gmail laut [Google nach sieben Tagen ab](https://developers.google.com/identity/protocols/oauth2#expiration). Die App kann diese Google-Vorgabe nicht lokal verlängern. Ein eigenes Testprojekt ist keine abgeschlossene Google-Freigabe für den öffentlichen Vertrieb; dafür sind Googles jeweils geltende Anforderungen gesondert zu prüfen.
+
+Bei abgelaufener Freigabe unter **Einstellungen → Gmail → Erneut anmelden** dasselbe Konto bestätigen. Nachrichten, Entwürfe, Synchronisierungsstand und die abgeschlossene Erstanalyse bleiben erhalten. Erst nach Bestätigung des Kontos werden die lokalen Zugangsdaten ersetzt. Ein anderes Google-Konto wird bei diesem Vorgang abgewiesen. **Konto trennen** ist ein eigener Vorgang und entfernt weiterhin die importierten Originaldaten.
 
 ## 4. Bedienung
 
@@ -284,6 +286,7 @@ Die API ist die interne Schnittstelle zur Browseroberfläche, kein öffentlich e
 | `POST /api/knowledge/delete` | `id`; löscht einen Wissenseintrag. |
 | `POST /api/gmail/configure` | Importiertes JSON des Desktop-OAuth-Clients. |
 | `POST /api/gmail/connect` | Liefert die Google-Anmelde-URL. |
+| `POST /api/gmail/reconnect` | Erneuert die Freigabe für das gespeicherte Konto ohne Löschen der lokalen Daten; liefert die Anmelde-URL. |
 | `POST /api/gmail/disconnect` | Trennt lokal und entfernt die zugehörigen Originaldaten. |
 | `POST /api/gmail/sync` | Startet den Abgleich beziehungsweise setzt den Erstimport fort. |
 | `POST /api/thread/generate` | `id`; reiht die manuelle Erstellung ein. |
@@ -315,6 +318,7 @@ Unter Windows kann für die erste Zeile `py -3` statt `python3` verwendet werden
 | `tests/test_learning.py` | Erstimport, Fortsetzung, belegte Profilbildung und Einmaligkeit. |
 | `tests/test_http.py` | Lokale Zugriffskontrolle, API, Bearbeitung und bestätigter Versand einschließlich Fehlerfällen. |
 | `tests/test_gmail_quota.py` | Quotenverteilung, Drosselung und Wiederholungsgrenzen. |
+| `tests/test_auth.py` | Sichere OAuth-Fehlerhinweise und erneute Anmeldung mit Kontoprüfung und Datenerhalt. |
 
 Die Tests verwenden temporäre Datenbanken, einen lokalen Testserver und simulierte Gmail-/Ollama-Antworten. Sie benötigen keine echten Google-Zugangsdaten und beweisen weder die Qualität eines bestimmten Modells noch die Kompatibilität mit jeder GPU oder zukünftigen Google-Änderungen. Eine reale Integration sollte mit einem dafür vorgesehenen Testkonto und persönlich geprüften Entwürfen getestet werden.
 
@@ -330,6 +334,7 @@ Bei Erweiterungen insbesondere erhalten: einmalige Erstanalyse mit gespeicherten
 | Nach Neustart werden API-Aktionen abgewiesen | Browserseite neu laden, damit sie das neue lokale Token erhält. |
 | Ollama nicht erreichbar / Modell fehlt | `ollama list`, Modellablage und lokalen Dienst auf Port 11434 prüfen; Modell separat mit `ollama pull qwen3:4b-instruct` laden. Dann Verbindung in Einstellungen prüfen. |
 | Google verweigert die Anmeldung | Desktop-Client, aktivierte Gmail API, Testnutzer und beide Berechtigungen prüfen. Abgelaufene Freigabe erneut verbinden. |
+| Beim Abruf erscheint OAuth-Fehler 400 / `invalid_grant` | Google lehnt die gespeicherte Freigabe ab. Unter Einstellungen → Gmail → Erneut anmelden dasselbe Konto bestätigen. Bei externen OAuth-Testprojekten kann das nach sieben Tagen erneut nötig sein. Ein generischer Gmail-Fehler 400 kann dagegen eine andere Ursache haben. |
 | Ersteinrichtung dauert lange | Import-/Analysephase in der Oberfläche prüfen. Große Postfächer und lokale Inferenz brauchen Zeit; App und Rechner aktiv lassen. Nach Unterbrechung gespeicherten Fortschritt fortsetzen. |
 | „Entwurf erstellen“ liefert zunächst nichts | Pause, Warteschlange, laufende Erstanalyse, Modellverbindung und Fehlerhinweis prüfen. Ein lokaler Entwurf wird erst durch „In Gmail speichern“ oder die erfolgreiche Automatik zu einem Gmail-Entwurf. |
 | Zusätzliche Faktenprüfung nicht abgeschlossen | Die zweite lokale Modellprüfung war nicht verwertbar, etwa wegen fehlender Modellantwort, Format oder Kontextgrenze. Entwurf persönlich prüfen. Der aktuelle Hinweis speichert die technische Einzelursache nicht dauerhaft. |

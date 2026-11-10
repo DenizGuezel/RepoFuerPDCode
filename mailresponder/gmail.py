@@ -243,17 +243,21 @@ class Gmail:
         with self.lock:
             self.write({"client_id": installed["client_id"], "client_secret": installed.get("client_secret", "")})
 
-    def begin_auth(self, base_url):
+    def begin_auth(self, base_url, *, expected_account=""):
         credentials = self.read()
         if not credentials.get("client_id"):
             raise ValueError("Importiere zuerst die Google-Zugangskonfiguration.")
         verifier = secrets.token_urlsafe(64)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
         state = secrets.token_urlsafe(32)
-        self.pending = {"state": state, "verifier": verifier, "redirect": base_url+"/oauth/callback", "expires": time.time()+600}
-        return "https://accounts.google.com/o/oauth2/v2/auth?"+urllib.parse.urlencode({
+        self.pending = {"state": state, "verifier": verifier, "redirect": base_url+"/oauth/callback", "expires": time.time()+600,
+                        "expected_account": expected_account}
+        parameters = {
             "client_id": credentials["client_id"], "redirect_uri": self.pending["redirect"], "response_type": "code", "scope": SCOPES,
-            "state": state, "code_challenge": challenge, "code_challenge_method": "S256", "access_type": "offline", "prompt": "consent"})
+            "state": state, "code_challenge": challenge, "code_challenge_method": "S256", "access_type": "offline", "prompt": "consent"}
+        if expected_account:
+            parameters["login_hint"] = expected_account
+        return "https://accounts.google.com/o/oauth2/v2/auth?"+urllib.parse.urlencode(parameters)
 
     def complete_auth(self, query):
         pending = self.pending
@@ -270,10 +274,23 @@ class Gmail:
             granted = set(token.get("scope", "").split())
             if not set(SCOPES.split()) <= granted:
                 raise ServiceError("Gmail-Lesezugriff und Entwurfszugriff werden beide benötigt. Bitte verbinde das Konto erneut.")
+            access = token.get("access_token")
+            if not isinstance(access, str) or not access:
+                raise ServiceError("Google hat die Anmeldung nicht vollständig bestätigt. Bitte melde dich erneut an.")
+            # Verify the candidate account before replacing credentials. Renewing access must never
+            # silently switch accounts or require deleting local messages and onboarding progress.
+            profile = self.request(API+"/profile", headers={"Authorization": "Bearer "+access})
+            account = profile.get("emailAddress", "") if isinstance(profile, dict) else ""
+            if not isinstance(account, str) or "@" not in account:
+                raise ServiceError("Google hat das Gmail-Konto nicht bestätigt. Bitte melde dich erneut an.")
+            if pending["expected_account"]:
+                if account.casefold() != pending["expected_account"].casefold():
+                    raise ValueError("Bitte melde dich mit dem bereits verbundenen Gmail-Konto an. Deine bisherigen Daten bleiben erhalten.")
+                account = pending["expected_account"]
             config.update(token)
             config["expires_at"] = time.time()+token.get("expires_in", 3600)
             self.write(config)
-        return self.api("/profile")["emailAddress"]
+        return account
 
     def access_token(self):
         with self.lock:

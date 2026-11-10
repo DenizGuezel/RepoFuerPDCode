@@ -59,6 +59,7 @@ def handler_for(app, local_token):
                         account = app.gmail.complete_auth({k: v[0] for k, v in urllib.parse.parse_qs(url.query).items()})
                         app.store.save_settings({"gmail_email": account}, internal=True)
                         app.store.event("Gmail wurde verbunden.")
+                    app.start_sync()
                     self.send_response(303)
                     self.send_header("Location", "/#settings")
                     self.send_header("Referrer-Policy", "no-referrer")
@@ -113,6 +114,12 @@ def handler_for(app, local_token):
                         if app.gmail.connected():
                             raise ValueError("Bitte trenne zuerst das bestehende Gmail-Konto.")
                         result["url"] = app.gmail.begin_auth(f"http://127.0.0.1:{self.server.server_port}")
+                elif path == "/api/gmail/reconnect":
+                    with app.write_lock:
+                        account = app.store.settings().get("gmail_email", "")
+                        if not app.gmail.connected() or not account:
+                            raise ValueError("Bitte verbinde zuerst dein Gmail-Konto.")
+                        result["url"] = app.gmail.begin_auth(f"http://127.0.0.1:{self.server.server_port}", expected_account=account)
                 elif path == "/api/gmail/disconnect":
                     app.disconnect()
                 elif path == "/api/gmail/sync":

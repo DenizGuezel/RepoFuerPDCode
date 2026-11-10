@@ -47,6 +47,20 @@ def request_json(url, method="GET", data=None, headers=None, timeout=30, form=Fa
     except urllib.error.HTTPError as exc:
         # Only recognize fixed machine reasons. Never expose upstream messages, tokens or content.
         rate_limited = exc.code == 429
+        oauth_message = None
+        endpoint = urllib.parse.urlparse(url)
+        if endpoint.hostname == "oauth2.googleapis.com" and endpoint.path == "/token" and exc.code in (400, 401):
+            try:
+                reason = json.loads(exc.read(65536)).get("error")
+                messages = {
+                    "invalid_grant": "Die Google-Anmeldung ist abgelaufen oder wurde widerrufen. Öffne Einstellungen → Gmail → Erneut anmelden.",
+                    "invalid_client": "Google lehnt die OAuth-Konfiguration ab. Prüfe die Desktop-App-Anmeldedaten in den Gmail-Einstellungen.",
+                    "unauthorized_client": "Dieser Google-OAuth-Client ist für die Anmeldung nicht zugelassen. Prüfe die Desktop-App-Konfiguration.",
+                    "invalid_scope": "Google hat die angefragten Gmail-Berechtigungen abgelehnt. Prüfe die OAuth-Konfiguration.",
+                }
+                oauth_message = messages.get(reason) if isinstance(reason, str) else None
+            except (ValueError, TypeError, AttributeError, OSError):
+                pass
         if exc.code == 403 and urllib.parse.urlparse(url).hostname == "gmail.googleapis.com":
             try:
                 error = json.loads(exc.read(65536)).get("error", {})
@@ -56,7 +70,9 @@ def request_json(url, method="GET", data=None, headers=None, timeout=30, form=Fa
                 pass
         retry_after = retry_after_seconds(exc.headers.get("Retry-After")) if exc.headers else 0
         exc.close()
-        if exc.code == 401:
+        if oauth_message:
+            message = oauth_message
+        elif exc.code == 401:
             message = "Die Anmeldung ist abgelaufen. Bitte verbinde Gmail erneut."
         elif rate_limited:
             message = ("Google begrenzt gerade die Abrufe. Der Import wartet und wird automatisch fortgesetzt."
