@@ -32,7 +32,61 @@ Die Anwendung kann:
 
 ## 2. Installation und Start
 
+### Docker
+
+Voraussetzung ist eine laufende Docker-Engine mit Docker Compose. Im Projektordner starten:
+
+```sh
+docker compose up --build -d
+docker compose logs -f app
+```
+
+Der Container enthält Python und Ollama. Beim ersten Start lädt er das Standardmodell `qwen3:4b-instruct` herunter und prüft, ob es lokal verwendbar ist. Erst danach startet die Oberfläche unter **http://127.0.0.1:8765**. Dieser Download benötigt Internet, mehrere GB freien Speicher und je nach Verbindung einige Minuten. Die anschließende KI-Verarbeitung läuft lokal. Bei weiteren Starts wird ein bereits vorhandenes Modell verwendet; der im Profil ausgewählte Modellname wird berücksichtigt.
+
+Gmail benötigt weiterhin die eigene Desktop-OAuth-Konfiguration und die persönliche Google-Freigabe aus [Abschnitt 3](#3-gmail-einrichten). Zugangsdaten können nicht im allgemeinen Image mitgeliefert werden. Die Anmeldung im Browser des Docker-Hosts wird an dessen lokalen App-Port zurückgeleitet. Die Einrichtung ist für einen Browser auf demselben Rechner vorgesehen.
+
+`compose.yaml` veröffentlicht ausschließlich den App-Port an der Host-Adresse `127.0.0.1`. Ollama bleibt im Container auf `127.0.0.1:11434`; sein API-Port wird nicht veröffentlicht. Die App lauscht innerhalb des Containers auf `0.0.0.0`, behält aber ihre Prüfungen für lokale Host-/Origin-Angaben und das API-Token. Der native Start ohne Docker verwendet weiterhin die Bind-Adresse `127.0.0.1`.
+
+Alle veränderlichen Daten liegen im Volume `mail-data` unter `/data`: SQLite, Google-Anmeldung, Modelle und lokale Logs. Compose versieht den tatsächlichen Volume-Namen mit dem Projektnamen, standardmäßig `ai-mail-responder_mail-data`. Der Container läuft als eigener Benutzer mit UID/GID 10001. Der Build-Kontext verwendet eine Positivliste in `.dockerignore`, und das Dockerfile kopiert ausschließlich Programmdateien; lokale `.data`- oder `.env`-Dateien gelangen nicht in das Image. Ein vorhandener nativer Datenordner wird nicht automatisch übernommen.
+
+```sh
+docker compose stop
+docker compose start
+docker compose down
+```
+
+Diese Befehle erhalten das Volume. **`docker compose down -v` löscht die Daten einschließlich Anmeldung, Postfacharchiv, Modell und Abschlussmerker.** Für eine Sicherung den Container stoppen und das gesamte Volume geschützt sichern.
+
+Ist der Standardport beispielsweise durch die native App belegt, unter macOS/Linux einen anderen Port wählen:
+
+```sh
+AMR_PORT=8766 docker compose up --build -d
+```
+
+Unter PowerShell zuerst `$env:AMR_PORT="8766"` setzen und danach `docker compose up --build -d` ausführen. Die Oberfläche liegt dann auf Port 8766. Compose verwendet denselben Port innen und außen, damit Host-Prüfung und Google-Rückleitung übereinstimmen. Für spätere Compose-Befehle dieselbe Einstellung beibehalten.
+
+Ohne Compose ist derselbe Betrieb möglich:
+
+```sh
+docker build -t ai-mail-responder:local .
+docker run -d --init --name ai-mail-responder --restart unless-stopped -p 127.0.0.1:8765:8765 -v ai-mail-responder-data:/data ai-mail-responder:local
+```
+
+Bei einem anderen Port zusätzlich `-e AMR_PORT=8766 -p 127.0.0.1:8766:8766` statt der Standard-Portzuordnung verwenden. Es ist keine `.env`-Datei erforderlich. `AMR_DOWNLOAD_MODEL=0` ist ein optionaler Modus zur Fehlersuche, der die Modellvorbereitung überspringt; damit sind KI-Antworten erst nach separater Bereitstellung eines Modells möglich.
+
+Die Standardkonfiguration nutzt die CPU. Für eine NVIDIA-GPU mit eingerichteter Container-Unterstützung:
+
+```sh
+docker compose -f compose.yaml -f compose.gpu.yaml up --build -d
+```
+
+Die [Ollama-Docker-Anleitung](https://docs.ollama.com/docker) und [Docker-GPU-Anleitung](https://docs.docker.com/compose/how-tos/gpu-support/) beschreiben die Voraussetzungen, insbesondere das NVIDIA Container Toolkit. Unter Docker Desktop ist GPU-Passthrough an die unterstützten Windows-/WSL2-Konfigurationen gebunden; dieser Linux-Container verwendet auf macOS keine Metal-GPU. Für Metal-Beschleunigung auf einem Mac die native Startmethode mit lokalem Ollama verwenden. Das 6-GB-Ziel ist weiterhin kein garantierter Mindestwert.
+
+`docker compose ps` zeigt den Healthcheck. Er prüft die Oberfläche und, im Standardmodus, den lokalen Ollama-Dienst. Für den ersten Modelldownload gilt eine Anlaufzeit von 30 Minuten. Bei fehlgeschlagenem Download oder fehlendem Speicher Logs und Docker-Ressourcen prüfen; gespeicherte Downloadteile bleiben im Volume. Die Version des Ollama-Basisimages ist im Dockerfile festgelegt und kann über das Build-Argument `OLLAMA_VERSION` bewusst geändert werden.
+
 ### Voraussetzungen
+
+Für den direkten Start ohne Docker:
 
 | Bestandteil | Anforderung |
 | --- | --- |
@@ -61,6 +115,7 @@ Die Oberfläche öffnet sich unter **http://127.0.0.1:8765**. Mit `Strg+C` im Te
 | `--open` | Öffnet die Oberfläche im Browser. |
 | `--with-ollama` | Startet ein installiertes Ollama bei Bedarf mit den lokalen Projekteinstellungen. |
 | `--port 8766` | Verwendet einen anderen Port für die Oberfläche. |
+| `--host 0.0.0.0` | Alternative Bind-Adresse für Container; Standard beim direkten Start ist `127.0.0.1`. |
 | `--data-dir PFAD` | Verwendet einen anderen Datenordner; Standard ist `.data` neben `run.py`. |
 
 Beispiel für einen eigenen Datenordner unter macOS/Linux:
@@ -158,6 +213,8 @@ flowchart LR
 | --- | --- |
 | [`run.py`](run.py) | Einstiegspunkt, Prüfung der Python-Version. |
 | [`Start.command`](Start.command), [`start.bat`](start.bat) | Starthelfer für macOS und Windows. |
+| [`Dockerfile`](Dockerfile), [`compose.yaml`](compose.yaml), [`compose.gpu.yaml`](compose.gpu.yaml), [`.dockerignore`](.dockerignore) | Container-Image, lokale Port-/Volume-Konfiguration, optionale NVIDIA-GPU und Begrenzung des Build-Kontexts. |
+| [`mailresponder/container.py`](mailresponder/container.py) | Docker-Start, automatische Modellvorbereitung, Healthcheck und Beenden des eigenen Ollama-Prozesses. |
 | [`mailresponder/server.py`](mailresponder/server.py) | CLI-Optionen, lokaler HTTP-Server, API-Routen, Browserstart und Zugriffsschutz. |
 | [`mailresponder/service.py`](mailresponder/service.py) | `Application`: Abläufe, Hintergrundarbeit, Synchronisierung, Bearbeitung, Veröffentlichung und Versand. |
 | [`mailresponder/store.py`](mailresponder/store.py) | SQLite-Schema, Einstellungen, FTS5-Suche, Warteschlange und Versionsprüfungen. |
@@ -264,7 +321,7 @@ SQLite verwendet WAL. Die Schemaanlage erfolgt beim Start; für bestehende Daten
 
 ### Schutzmechanismen und Grenzen
 
-- Der App-Server bindet ausschließlich an `127.0.0.1`. API-Anfragen benötigen ein beim Start erzeugtes lokales Token im Header `X-Local-Token`; Host und Origin werden geprüft. Das Token wird in die lokale Startseite eingesetzt und bei App-Neustart erneuert.
+- Beim nativen Start bindet der App-Server standardmäßig an `127.0.0.1`. Im Container bindet er intern an `0.0.0.0`; Compose veröffentlicht den Port ausschließlich auf dem lokalen Docker-Host. API-Anfragen benötigen ein beim Start erzeugtes lokales Token im Header `X-Local-Token`; Host und Origin werden geprüft. Das Token wird in die lokale Startseite eingesetzt und bei App-Neustart erneuert.
 - Eine Content Security Policy begrenzt Ressourcen auf lokale Inhalte. Es gibt keine externen Fonts, Tracker oder CDN-Skripte. Der statische Dateipfad erlaubt keinen Zugriff auf den Datenordner.
 - Der Editor und das Backend bereinigen HTML. Skripte, eingebettete Inhalte und entfernte Bilder werden nicht übernommen; Links werden auf erlaubte Protokolle begrenzt.
 - Mail- und Wissenstexte werden im Prompt als nicht vertrauenswürdige Daten behandelt. Das Modell hat keine Werkzeuge zum Ausführen von Befehlen oder eigenständigen Senden. Modellfehler und durch Texte beeinflusste Antworten bleiben möglich.
@@ -319,6 +376,7 @@ Unter Windows kann für die erste Zeile `py -3` statt `python3` verwendet werden
 | `tests/test_http.py` | Lokale Zugriffskontrolle, API, Bearbeitung und bestätigter Versand einschließlich Fehlerfällen. |
 | `tests/test_gmail_quota.py` | Quotenverteilung, Drosselung und Wiederholungsgrenzen. |
 | `tests/test_auth.py` | Sichere OAuth-Fehlerhinweise und erneute Anmeldung mit Kontoprüfung und Datenerhalt. |
+| `tests/test_container.py` | Container-Konfiguration, Modellvorbereitung, Fehler-/Abbruchverhalten und Instanzsperre. |
 
 Die Tests verwenden temporäre Datenbanken, einen lokalen Testserver und simulierte Gmail-/Ollama-Antworten. Sie benötigen keine echten Google-Zugangsdaten und beweisen weder die Qualität eines bestimmten Modells noch die Kompatibilität mit jeder GPU oder zukünftigen Google-Änderungen. Eine reale Integration sollte mit einem dafür vorgesehenen Testkonto und persönlich geprüften Entwürfen getestet werden.
 

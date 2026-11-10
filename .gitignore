@@ -4,6 +4,10 @@
 !/.gitignore
 !/README.md
 !/DOKUMENTATION.md
+!/Dockerfile
+!/.dockerignore
+!/compose.yaml
+!/compose.gpu.yaml
 !/run.py
 !/Start.command
 !/start.bat

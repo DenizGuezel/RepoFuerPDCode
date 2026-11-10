@@ -1,0 +1,20 @@
+name: ai-mail-responder
+
+services:
+  app:
+    build: .
+    image: ai-mail-responder:local
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    ports:
+      - "127.0.0.1:${AMR_PORT:-8765}:${AMR_PORT:-8765}"
+    environment:
+      AMR_PORT: "${AMR_PORT:-8765}"
+    volumes:
+      - mail-data:/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  mail-data:

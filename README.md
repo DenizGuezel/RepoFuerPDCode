@@ -10,6 +10,18 @@ Die **[Projektdokumentation](DOKUMENTATION.md)** erklärt Einrichtung, Architekt
 
 ## Schnellstart
 
+Mit Docker genügt eine Installation von Docker mit Compose. Python und Ollama werden im Image mitgeliefert:
+
+```sh
+docker compose up --build -d
+```
+
+Beim ersten Start wird das lokale Standardmodell automatisch heruntergeladen. Danach **http://127.0.0.1:8765** öffnen und unter Einstellungen die eigene Google-OAuth-Datei importieren sowie Gmail freigeben. Nachrichten, Anmeldung und Modelle bleiben im Docker-Volume `mail-data` erhalten.
+
+Die [Docker-Anleitung](DOKUMENTATION.md#docker) beschreibt Start, Logs, andere Ports und optionale NVIDIA-Beschleunigung. Die CPU-Konfiguration funktioniert ohne GPU; auf macOS nutzt dieser Linux-Container keine Metal-Beschleunigung.
+
+### Direkt ohne Docker
+
 Voraussetzungen: **Python 3.11+ mit SQLite/FTS5**, ein Browser und **[Ollama](https://ollama.com/download)** für die lokale KI. Der Python-Code benötigt keine zusätzlichen Pakete; die Oberfläche benötigt keinen Build.
 
 Im Projektordner starten:

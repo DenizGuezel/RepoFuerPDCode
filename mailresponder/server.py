@@ -161,26 +161,26 @@ def handler_for(app, local_token):
     return Handler
 
 
-def serve(port=8765, data_dir=None, browser=False, with_ollama=False):
+def serve(port=8765, data_dir=None, browser=False, with_ollama=False, host="127.0.0.1"):
     os.umask(0o077)
     directory = Path(data_dir or ROOT / ".data")
     with instance_lock(directory):
-        _serve(port, directory, browser, with_ollama)
+        _serve(port, directory, browser, with_ollama, host)
 
 
-def _serve(port, data_dir, browser, with_ollama):
+def _serve(port, data_dir, browser, with_ollama, host="127.0.0.1"):
     os.umask(0o077)
     app = Application(data_dir or ROOT / ".data")
     token = secrets.token_urlsafe(32)
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", port), handler_for(app, token))
+        server = ThreadingHTTPServer((host, port), handler_for(app, token))
     except OSError as exc:
         raise SystemExit(f"Der lokale Port {port} ist nicht verfügbar. Wähle mit --port einen anderen.") from exc
     owned_ollama = start_ollama(app.store.directory) if with_ollama else None
     app.start()
     url = f"http://127.0.0.1:{server.server_port}"
     print(f"AI Mail Responder läuft lokal: {url}", flush=True)
-    print("Beenden mit Strg+C. Daten bleiben lokal im Projektordner.", flush=True)
+    print("Beenden mit Strg+C. Daten bleiben im Datenordner erhalten.", flush=True)
     if browser:
         threading.Timer(0.4, webbrowser.open, args=(url,)).start()
     try:
@@ -197,8 +197,10 @@ def _serve(port, data_dir, browser, with_ollama):
 def main():
     parser = argparse.ArgumentParser(description="AI Mail Responder · lokal")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--host", choices=("127.0.0.1", "0.0.0.0"), default="127.0.0.1",
+                        help="Bind-Adresse; 0.0.0.0 ist für den Containerbetrieb vorgesehen")
     parser.add_argument("--data-dir", type=Path)
     parser.add_argument("--open", action="store_true", help="Oberfläche im Browser öffnen")
     parser.add_argument("--with-ollama", action="store_true", help="Installiertes Ollama bei Bedarf lokal mitstarten")
     args = parser.parse_args()
-    serve(args.port, args.data_dir, args.open, args.with_ollama)
+    serve(args.port, args.data_dir, args.open, args.with_ollama, args.host)

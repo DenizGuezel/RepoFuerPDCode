@@ -1,0 +1,10 @@
+# Optional NVIDIA acceleration; requires the NVIDIA Container Toolkit.
+services:
+  app:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

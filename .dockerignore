@@ -1,0 +1,17 @@
+# Keep secrets and runtime files out of the build context, including future files.
+**
+!Dockerfile
+!.dockerignore
+!run.py
+!mailresponder/
+mailresponder/*
+!mailresponder/*.py
+!static/
+static/*
+!static/app.js
+!static/editor.js
+!static/index.html
+!static/styles.css
+!static/icon.svg
+**/__pycache__
+**/*.pyc
