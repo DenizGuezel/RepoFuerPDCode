@@ -42,9 +42,10 @@ const statusLabels = {ready:'Entwurf bereit', saved:'In Gmail gespeichert', revi
 let state, route = location.hash.slice(1) || 'overview', mode = localStorage.getItem('amr-view') || 'demo', selected = null, previewTab = 'draft', search = '', statusFilter = '', formDirty = false, refreshing = false, lastRenderedSnapshot = '';
 const pendingDrafts = new Map();
 const profileLabels = {company:'Unternehmensname', description:'Unternehmensbeschreibung', tone:'Tonalität', salutation:'Anrede', length:'Antwortlänge', signature:'Signatur', style_examples:'Beispielantworten', style_analysis:'Schreibstil'};
+let websiteRequest = null;
 
-async function api(path, data) {
-  const response = await fetch(path, {method: data === undefined ? 'GET' : 'POST', headers: {'X-Local-Token': token, ...(data !== undefined ? {'Content-Type':'application/json'} : {})}, ...(data !== undefined ? {body:JSON.stringify(data)} : {})});
+async function api(path, data, options = {}) {
+  const response = await fetch(path, {method: data === undefined ? 'GET' : 'POST', signal:options.signal, headers: {'X-Local-Token': token, ...(data !== undefined ? {'Content-Type':'application/json'} : {})}, ...(data !== undefined ? {body:JSON.stringify(data)} : {})});
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Die Aktion konnte nicht abgeschlossen werden.');
   return result;
@@ -227,7 +228,7 @@ function input(name,label,value,help='',type='text'){return `<label class="field
 function textarea(name,label,value,help='',rows=4){return `<label class="field"><span>${label}</span><textarea name="${name}" rows="${rows}">${esc(value)}</textarea>${help?`<small>${help}</small>`:''}</label>`;}
 function select(name,label,value,options,help=''){return `<label class="field"><span>${label}</span><select name="${name}">${options.map(o=>`<option value="${esc(o[0])}" ${String(value)===String(o[0])?'selected':''}>${esc(o[1])}</option>`).join('')}</select>${help?`<small>${help}</small>`:''}</label>`;}
 function saveActions(){return '<div class="form-actions"><small class="muted">Wird auf diesem Rechner gespeichert.</small><button class="btn primary" type="submit">'+icon('check')+'Änderungen speichern</button></div>';}
-function knowledgePage(){const s=state.settings;return `${heading('Dein Wissen. Die Grundlage.','Gute Antworten beginnen mit den richtigen Informationen.')}${onboardingCard()}<div class="form-layout"><div><form class="card form-card" data-form="settings"><h2>Dein Unternehmensprofil</h2><p>Beim ersten Verbinden aus deinen E-Mails erkannt. Du kannst alle Angaben ergänzen und korrigieren.</p>${input('company','Unternehmensname',s.company)}${textarea('description','Was sollte dein Assistent über dein Unternehmen wissen?',s.description,'Beschreibe Leistungen, Zielgruppe, Abläufe und bestätigte Konditionen.',6)}${saveActions()}</form><section class="card form-card"><div class="section-heading"><div><h2>Deine Wissenssammlung</h2><p>Leistungen, Abläufe, Preise und häufige Fragen.</p></div>${button('add-document','Wissen ergänzen','plus')}</div><input class="file-input" id="knowledge-file" type="file" accept=".txt,.md,.csv"><div class="document-list">${state.documents.map(d=>`<div class="doc-row"><span class="doc-icon">${icon('file')}</span><div class="doc-text"><strong>${esc(d.title)}</strong><small>${d.content.length.toLocaleString('de-DE')} Zeichen · Lokal gespeichert</small></div><div class="doc-actions"><button class="icon-btn" data-action="edit-document" data-id="${esc(d.id)}" aria-label="${esc(d.title)} bearbeiten">${icon('pen')}</button><button class="icon-btn" data-action="delete-document" data-id="${esc(d.id)}" aria-label="${esc(d.title)} löschen">${icon('trash')}</button></div></div>`).join('')||`<div class="empty">${icon('book')}<h3>Hier bekommt dein Assistent Hintergrundwissen.</h3><p>Füge einen Text hinzu oder importiere eine Textdatei.</p>${button('import-document','Datei importieren','download')}</div>`}</div>${state.documents.length?`<div style="margin-top:16px">${button('import-document','Textdatei importieren','download')}</div>`:''}</section></div><aside class="card info-card"><div class="info-icon">${icon('book')}</div><h3>Ein gemeinsamer Wissensstand</h3><p>Die lokale Suche findet für jede Anfrage passende Textstellen. So muss dein Modell nur die Informationen lesen, die für die Antwort relevant sind.</p><br><p>Du kannst Texte aus deiner Website hier einfügen. Unterstützte Dateien: TXT, Markdown und CSV.</p><br><p>Gespeicherte Daten werden nicht an einen KI-Anbieter übertragen.</p></aside></div>`;}
+function knowledgePage(){const s=state.settings;return `${heading('Dein Wissen. Die Grundlage.','Gute Antworten beginnen mit den richtigen Informationen.')}${onboardingCard()}<div class="form-layout"><div><form class="card form-card" data-form="settings"><h2>Dein Unternehmensprofil</h2><p>Beim ersten Verbinden aus deinen E-Mails erkannt. Du kannst alle Angaben ergänzen und korrigieren.</p>${input('company','Unternehmensname',s.company)}${textarea('description','Was sollte dein Assistent über dein Unternehmen wissen?',s.description,'Beschreibe Leistungen, Zielgruppe, Abläufe und bestätigte Konditionen.',6)}${saveActions()}</form><section class="card form-card"><div class="section-heading"><div><h2>Deine Wissenssammlung</h2><p>Leistungen, Abläufe, Preise und häufige Fragen.</p></div><div class="knowledge-import-actions">${button('import-website','Website importieren','download')}${button('add-document','Wissen ergänzen','plus')}</div></div><input class="file-input" id="knowledge-file" type="file" accept=".txt,.md,.csv"><div class="document-list">${state.documents.map(d=>`<div class="doc-row"><span class="doc-icon">${icon('file')}</span><div class="doc-text"><strong>${esc(d.title)}</strong><small>${d.content.length.toLocaleString('de-DE')} Zeichen · Lokal gespeichert</small></div><div class="doc-actions"><button class="icon-btn" data-action="edit-document" data-id="${esc(d.id)}" aria-label="${esc(d.title)} bearbeiten">${icon('pen')}</button><button class="icon-btn" data-action="delete-document" data-id="${esc(d.id)}" aria-label="${esc(d.title)} löschen">${icon('trash')}</button></div></div>`).join('')||`<div class="empty">${icon('book')}<h3>Hier bekommt dein Assistent Hintergrundwissen.</h3><p>Füge einen Text hinzu oder importiere eine Textdatei.</p>${button('import-document','Datei importieren','download')}</div>`}</div>${state.documents.length?`<div style="margin-top:16px">${button('import-document','Textdatei importieren','download')}</div>`:''}</section></div><aside class="card info-card"><div class="info-icon">${icon('book')}</div><h3>Ein gemeinsamer Wissensstand</h3><p>Die lokale Suche findet für jede Anfrage passende Textstellen. So muss dein Modell nur die Informationen lesen, die für die Antwort relevant sind.</p><br><p>Über „Website importieren“ kannst du öffentlich sichtbare Unternehmensinformationen einlesen und vor dem Speichern prüfen. Zusätzlich werden TXT-, Markdown- und CSV-Dateien unterstützt.</p><br><p>Gespeicherte Daten werden nicht an einen KI-Anbieter übertragen.</p></aside></div>`;}
 function stylePage(){const s=state.settings;return `${heading('Antworten, die nach dir klingen.','Dein Schreibstil wird beim ersten Verbinden aus eigenen gesendeten E-Mails erkannt.')}${onboardingCard()}<div class="form-layout"><form class="card form-card" data-form="settings"><h2>Dein Schreibstil</h2><p>Diese Vorgaben gelten für neu erstellte Entwürfe.</p><div class="form-grid">${select('salutation','Anrede',s.salutation,[['Sie','Sie'],['Du','Du'],['Wie im Gespräch','Wie im bisherigen Gespräch']])}${select('length','Antwortlänge',s.length,[['Kompakt','Kompakt'],['Mittel','Mittel'],['Ausführlich','Ausführlich']])}</div>${textarea('style_analysis','Erkannter Schreibstil',s.style_analysis,'Einmalig lokal analysierte Sprachmuster. Deine Korrekturen bleiben bei weiteren Starts erhalten.',4)}${input('tone','Tonalität',s.tone,'Zum Beispiel: freundlich, direkt und ohne Floskeln.')}${textarea('signature','Deine Signatur',s.signature,'Wird dem Modell als verbindlicher Signaturtext vorgegeben.',3)}${textarea('style_examples','Eigene Beispielantworten',s.style_examples,'Füge ein bis zwei kurze E-Mails ein, die deinen Schreibstil zeigen.',6)}${saveActions()}</form><aside class="card info-card"><div class="info-icon">${icon('pen')}</div><h3>Persönlich bleibt persönlich.</h3><p>Das erkannte Stilprofil beruht auf deinen eigenen gesendeten Texten. Zitierte Kundenmails werden dafür abgetrennt. Das lokale Modell wird dabei nicht neu trainiert.</p><br><p>Die Antwortsprache richtet sich nach der eingehenden E-Mail. Du kannst jeden Entwurf vor dem Versand bearbeiten.</p></aside></div>`;}
 function toggle(action,label,description,on){return `<div class="toggle-row"><div><h3>${label}</h3><p>${description}</p></div><button class="toggle ${on?'on':''}" role="switch" aria-checked="${on}" aria-label="${label}" data-action="${action}"></button></div>`;}
 function rulesPage(){const s=state.settings;return `${heading('Dein Assistent. Deine Regeln.','Lege fest, wann und wie Antworten vorbereitet werden.')}<div class="form-layout"><div><section class="card form-card"><h2>Verarbeitung</h2>${toggle('automatic','Entwürfe automatisch vorbereiten','Neue passende Nachrichten werden lokal verarbeitet. Vollständige Entwürfe ohne offene Punkte werden in Gmail gespeichert.',s.automatic)}${toggle('pause','Verarbeitung pausieren','Neue Aufträge und der regelmäßige Gmail-Abruf warten. Ein laufender Entwurf wird lokal fertiggestellt.',s.paused)}${toggle('history','Frühere Gespräche berücksichtigen','Bezieht lokal gespeicherte Nachrichten desselben Kontakts ein. Das Unternehmens- und Stilprofil wird dabei nicht erneut analysiert.',s.use_history)}</section><form class="card form-card" data-form="settings"><h2>Individuelle Vorgaben</h2><p>Formuliere Regeln so, wie du sie einem Kollegen erklären würdest.</p>${textarea('instructions','Antwortregeln',s.instructions,'Beispiel: Für ein Angebot zuerst Umfang und Wunschtermin erfragen. Keine Rabatte zusagen.',5)}${textarea('excluded_senders','Ausgeschlossene Absender',s.excluded_senders,'Eine E-Mail-Adresse oder @domain.de pro Zeile.',3)}${input('gmail_query','Welche Gmail-Nachrichten sollen berücksichtigt werden?',s.gmail_query,'Filter für den laufenden Abruf. Der einmalige Erstimport lädt unabhängig davon das gesamte Postfach.')}${select('sync_seconds','Abrufintervall',s.sync_seconds,[[60,'Jede Minute'],[120,'Alle 2 Minuten'],[300,'Alle 5 Minuten'],[600,'Alle 10 Minuten']])}${saveActions()}</form></div><aside class="card info-card"><div class="info-icon">${icon('shield')}</div><h3>Du behältst das letzte Wort.</h3><p>Die Anwendung erstellt ausschließlich Entwürfe. Du versendest deine Antworten selbst in Gmail.</p><br><p>Newsletter und automatische Absender werden vorab gefiltert. Entwürfe mit offenen Entscheidungen bleiben zur Prüfung in der lokalen Übersicht.</p><br><p>Vorhandene oder in Gmail bearbeitete Entwürfe werden vor einer Änderung geprüft.</p></aside></div>`;}
@@ -236,6 +237,19 @@ function settingsPage(){const s=state.settings,m=state.model;const names=m.model
       <aside><section class="card info-card"><div class="info-icon">${icon('cpu')}</div><h3>Auf deinem Rechner zu Hause.</h3><p>KI-Verarbeitung, Unternehmenswissen und Suchindex bleiben lokal. Das Modell läuft über Ollama auf diesem Rechner.</p><br><p>Gmail benötigt Internet für den Abruf und die Synchronisierung der Entwürfe. Die Verarbeitung arbeitet, solange diese Anwendung läuft und der Rechner wach ist.</p><br><a class="btn small" href="#knowledge">Unternehmensprofil ergänzen ${icon('arrow')}</a></section><section class="card form-card" style="margin-top:20px"><h3>Gmail einmalig vorbereiten</h3><div class="steps"><span class="step-number">1</span><div><p>In der Google Cloud Console ein Projekt anlegen und die Gmail API aktivieren.</p></div></div><div class="steps"><span class="step-number">2</span><div><p>Den OAuth-Zustimmungsbildschirm einrichten und dein Konto als Testnutzer hinzufügen.</p></div></div><div class="steps"><span class="step-number">3</span><div><p>Einen OAuth-Client vom Typ <strong>Desktop-App</strong> erstellen und die JSON-Datei herunterladen.</p></div></div><a class="btn small" href="https://developers.google.com/workspace/gmail/api/quickstart/python" target="_blank" rel="noopener noreferrer">Google-Anleitung ${icon('external')}</a></section></aside></div>`;}
 
 function openDocument(doc){modal.innerHTML=`<form data-form="document"><div class="modal-head"><h2 id="modal-title">${doc?.id?'Wissen bearbeiten':'Wissen ergänzen'}</h2><button type="button" class="icon-btn" data-action="close-modal" aria-label="Schließen">${icon('close')}</button></div><input type="hidden" name="id" value="${esc(doc?.id||'')}">${input('title','Titel',doc?.title||'')}${textarea('content','Wissensinhalt',doc?.content||'','Zum Beispiel: Leistungen, Konditionen oder Antworten auf häufige Fragen.',11)}<div class="modal-actions"><button type="button" class="btn" data-action="close-modal">Abbrechen</button><button class="btn primary" type="submit">${icon('check')}Lokal speichern</button></div></form>`;modal.showModal();}
+
+function openWebsiteImport(){
+  modal.innerHTML=`<form data-form="website"><div class="modal-head"><h2 id="modal-title">Unternehmenswebsite einlesen</h2><button type="button" class="icon-btn" data-action="close-modal" aria-label="Schließen">${icon('close')}</button></div>
+    <p class="profile-intro">Die Startseite und bis zu vier passende Unternehmensseiten werden eingelesen. Danach kannst du die Informationen prüfen und bearbeiten, bevor sie in dein Wissen aufgenommen werden.</p>
+    <label class="field website-url"><span>Website-Adresse</span><input name="url" type="text" inputmode="url" autocomplete="url" placeholder="https://www.dein-unternehmen.de" maxlength="2048" required></label>
+    <div class="modal-actions"><button type="button" class="btn" data-action="close-modal">Abbrechen</button><button type="submit" class="btn primary">Website auslesen</button></div></form>`;
+  modal.showModal();
+  modal.querySelector('input').focus();
+}
+
+function cancelWebsiteImport(){
+  if(modal.querySelector('[data-form="website"]')){websiteRequest?.abort();websiteRequest=null;}
+}
 
 function openProfileReview(){
   const profile=state.onboarding.profile||{};
@@ -280,12 +294,13 @@ document.addEventListener('click',async event=>{
   if(action==='preview-tab'){previewTab=buttonNode.dataset.tab;render();return;}
   if(action==='setup-gmail'){location.hash='settings';setTimeout(()=>document.getElementById('gmail-setup')?.scrollIntoView({behavior:'smooth',block:'center'}),70);return;}
   if(action==='add-document'){openDocument();return;}
+  if(action==='import-website'){openWebsiteImport();return;}
   if(action==='edit-document'){openDocument(state.documents.find(d=>d.id===id));return;}
   if(action==='review-profile'){
     if(formDirty){toast('Bitte speichere zuerst deine Änderungen, bevor du die Analyseergebnisse öffnest.',true);return;}
     openProfileReview();return;
   }
-  if(action==='close-modal'){modal.close();return;}
+  if(action==='close-modal'){cancelWebsiteImport();modal.close();return;}
   if(action==='import-document'){document.getElementById('knowledge-file').click();return;}
   if(action==='import-google'){document.getElementById('google-file').click();return;}
   buttonNode.disabled=true;
@@ -314,6 +329,29 @@ document.addEventListener('click',async event=>{
 document.addEventListener('submit',async event=>{
   const form=event.target;if(!form.dataset.form)return;event.preventDefault();
   const data=Object.fromEntries(new FormData(form));
+  if(form.dataset.form==='website'){
+    if(form.dataset.loading)return;
+    form.dataset.loading='true';
+    const controller=new AbortController();websiteRequest=controller;
+    const submit=form.querySelector('[type="submit"]'),input=form.querySelector('input');
+    submit.disabled=true;input.disabled=true;
+    submit.innerHTML=icon('refresh','spinner')+'Website wird vorbereitet…';
+    try{
+      const result=await api('/api/knowledge/website',data,{signal:controller.signal});
+      if(!modal.open||!form.isConnected)return;
+      modal.close();openDocument(result);
+      const note=document.createElement('div');note.className='website-notes';
+      const summary=document.createElement('p');summary.textContent=`${result.sources.length} ${result.sources.length===1?'Seite':'Seiten'} eingelesen${result.facts_count?` · ${result.facts_count} Textstellen von deiner lokalen KI ausgewählt`:''}. Prüfe die Angaben und speichere die gewünschten Informationen.`;
+      note.append(summary);
+      for(const warning of result.warnings){const line=document.createElement('p');line.textContent=warning;note.append(line);}
+      modal.querySelector('.modal-head').after(note);
+    }catch(error){if(error.name!=='AbortError')toast(error.message,true);}
+    finally{
+      if(websiteRequest===controller)websiteRequest=null;
+      if(form.isConnected){delete form.dataset.loading;submit.disabled=false;input.disabled=false;submit.textContent='Website auslesen';}
+    }
+    return;
+  }
   if(form.dataset.form==='send'){
     if(form.dataset.sending)return;
     form.dataset.sending='true';
@@ -374,6 +412,7 @@ window.addEventListener('hashchange',()=>{
   formDirty=false;route=location.hash.slice(1)||'overview';if(state)render();window.scrollTo(0,0);
 });
 modal.addEventListener('cancel',event=>{
+  cancelWebsiteImport();
   if(modal.querySelector('[data-sending="true"]'))event.preventDefault();
 });
 window.addEventListener('beforeunload',event=>{if(formDirty||pendingDrafts.size){event.preventDefault();event.returnValue='';}});

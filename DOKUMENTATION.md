@@ -197,6 +197,10 @@ Bei abgelaufener Freigabe unter **Einstellungen → Gmail → Erneut anmelden** 
 
 **Wissensimport:** TXT, Markdown und CSV werden als Text übernommen, nicht als strukturierte Fachdatenbank. Die Dateiauswahl begrenzt Imports auf 1 MB; ein gespeicherter Wissenseintrag wird auf 200.000 Zeichen begrenzt. Anhänge von E-Mails werden nicht als Wissen eingelesen.
 
+**Website importieren:** Unter Unternehmenswissen die gleichnamige Schaltfläche öffnen und die öffentliche Unternehmenswebsite eingeben. Ohne Protokoll wird HTTPS verwendet. Die Anwendung liest die angegebene Seite und bis zu vier passende Unterseiten derselben Domain, etwa Über uns, Leistungen, Kontakt oder Impressum. Die lokale KI kann daraus bis zu sechs wörtlich belegte Textstellen auswählen. Ergebnis und Originaltexte mit Quellenadressen erscheinen in einer bearbeitbaren Vorschau. Erst **Lokal speichern** legt einen Wissenseintrag an und nimmt ihn in die lokale Suche auf. Unternehmensprofil und bisheriges Wissen werden dabei nicht automatisch ersetzt. Ohne verfügbares Modell oder während eines anderen Modellauftrags ist der reine Textimport möglich.
+
+Der Website-Abruf benötigt Internet und übermittelt der Zielwebsite übliche Verbindungsdaten und die angefragte URL. Private Profilangaben, Google-Tokens, Cookies und Mailtexte werden nicht mitgesendet. Die Verarbeitung erfolgt anschließend lokal. Der Import beachtet `robots.txt`, folgt nur begrenzt Weiterleitungen und lädt ausschließlich HTML oder Text; JavaScript, Logins, PDFs, Bilder und eingebettete Ressourcen werden nicht ausgeführt beziehungsweise importiert. Reine JavaScript-Seiten oder Websites, die automatisches Lesen ablehnen, können deshalb nicht vollständig eingelesen werden. Erneutes Einlesen erfolgt nur auf ausdrücklichen Wunsch; ein weiterer Import erzeugt eine neue bearbeitbare Vorschau.
+
 **Analyseergebnisse übernehmen:** Nach abgeschlossener Erstanalyse öffnet **Analyseergebnisse ansehen** die gespeicherten Vorschläge zum Unternehmen und Schreibstil. Bereits vor oder während der Erstanalyse manuell gepflegte Felder bleiben zunächst erhalten. Im Dialog stehen aktuelle und erkannte Werte nebeneinander. Gewünschte Felder einzeln markieren und mit **Auswahl übernehmen** bestätigen; alle übrigen Angaben bleiben unverändert. Bereits übereinstimmende Werte sind gekennzeichnet. Eine neue Postfachanalyse ist dafür nicht nötig, auch bei einem schon früher abgeschlossenen Import. Vor dem Öffnen ungespeicherte Formularänderungen speichern. Wurde ein ausgewähltes Feld während der Prüfung in einem anderen Fenster geändert oder das Konto gewechselt, stoppt die Übernahme und der Dialog muss neu geöffnet werden.
 
 ## 5. Architektur und Quellcode
@@ -209,6 +213,7 @@ flowchart LR
     APP --> DB[(SQLite und FTS5)]
     APP -->|lokale Modellanfragen| AI[Ollama auf 127.0.0.1]
     APP <-->|OAuth und Gmail API über HTTPS| GMAIL[Gmail bei Google]
+    APP -->|öffentliche Texte über HTTP und HTTPS| WEB[Unternehmenswebsite]
 ```
 
 | Datei / Verzeichnis | Verantwortung |
@@ -222,6 +227,7 @@ flowchart LR
 | [`mailresponder/store.py`](mailresponder/store.py) | SQLite-Schema, Einstellungen, FTS5-Suche, Warteschlange und Versionsprüfungen. |
 | [`mailresponder/gmail.py`](mailresponder/gmail.py) | OAuth, Gmail API, MIME-Verarbeitung, Entwurfsvergleich, Quotensteuerung und ausdrücklicher Versandpfad. |
 | [`mailresponder/learning.py`](mailresponder/learning.py) | `MailboxLearner`: einmaliger Import, Textabschnitte, belegte Erkenntnisse und Profilbildung. |
+| [`mailresponder/website.py`](mailresponder/website.py) | Öffentliche Website-Abrufe, Robots-Regeln, begrenzte Unterseitensuche, HTML-Textgewinnung und belegte lokale KI-Auswahl. |
 | [`mailresponder/model.py`](mailresponder/model.py) | Lokale Ollama-Anfragen, Kontextbudget, Antwortschema und zusätzliche Inhaltsprüfung. |
 | [`mailresponder/rich.py`](mailresponder/rich.py) | Serverseitige HTML-Bereinigung und Ableitung der Textfassung. |
 | [`mailresponder/net.py`](mailresponder/net.py) | Begrenzte HTTP-/JSON-Anfragen und einheitliche Dienstfehler. |
@@ -329,6 +335,7 @@ SQLite verwendet WAL. Die Schemaanlage erfolgt beim Start; für bestehende Daten
 - Mail- und Wissenstexte werden im Prompt als nicht vertrauenswürdige Daten behandelt. Das Modell hat keine Werkzeuge zum Ausführen von Befehlen oder eigenständigen Senden. Modellfehler und durch Texte beeinflusste Antworten bleiben möglich.
 - Unter Unix werden restriktive Datei-/Ordnerrechte verwendet. Unter Windows gelten die jeweiligen Benutzer- und Dateisystemberechtigungen. Die Daten sind nicht zusätzlich anwendungsseitig verschlüsselt; geschütztes Benutzerkonto und Geräteverschlüsselung sind entsprechend relevant.
 - Die Prüfungen vor Gmail-Schreibvorgängen bilden keine atomare Sperre auf Googles Servern. Gleichzeitige Änderungen zwischen Prüfung und Schreiben lassen sich nicht vollständig ausschließen.
+- Website-Abrufe erlauben nur öffentliche HTTP-/HTTPS-Ziele mit Standardports. DNS-Ergebnisse und Weiterleitungen werden geprüft; die TCP-Verbindung verwendet eine zuvor geprüfte öffentliche IP, während HTTPS weiterhin den ursprünglichen Hostnamen verifiziert. Private Netze, Loopback, Link-Local und bekannte Übergangsadressen sind gesperrt. Es werden keine Proxy-Einstellungen oder Anmeldeinformationen übernommen. Pro Import sind höchstens fünf Seiten mit je 1,5 MB Antwortdaten und 20.000 Textzeichen vorgesehen; lange Texte und nicht erreichbare Unterseiten werden in der Vorschau kenntlich gemacht. Website-Text bleibt unvertrauenswürdiges Quellenmaterial; KI-Auszüge werden nur akzeptiert, wenn Zitat und Quellenadresse in den tatsächlich bereitgestellten Texten vorkommen.
 
 Das Repository enthält ausschließlich freigegebenen Quellcode und Dokumentation. Seine `.gitignore` erlaubt diese Dateien gezielt. `.data`, `.env`-Dateien, OAuth-Downloads, Maildaten, Modelle, lokale Archive und Sicherungen dürfen nicht mit `git add -f` hinzugefügt werden. Ein Verzeichniswechsel allein schützt keine vertraulichen Daten; vor jedem Commit die tatsächlich vorgemerkten Dateien prüfen.
 
@@ -343,6 +350,7 @@ Die API ist die interne Schnittstelle zur Browseroberfläche, kein öffentlich e
 | `POST /api/settings` | Änderbare Einstellungen entsprechend `store.DEFAULTS`. |
 | `POST /api/profile/apply` | `account`, `fields` als Liste ausgewählter Profilfelder und `expected` als Objekt mit deren zuvor angezeigten aktuellen Werten. Übernimmt nur gespeicherte Ergebnisse der abgeschlossenen Erstanalyse dieses Kontos. Bei zwischenzeitlicher Bearbeitung oder Kontowechsel HTTP 409; keine teilweise Übernahme. |
 | `POST /api/knowledge` | `title`, `content`, optional `id`; legt Wissen an oder aktualisiert es. |
+| `POST /api/knowledge/website` | `url`; liest eine öffentliche Website und liefert `title`, `content`, `sources`, `warnings` und `facts_count` zur Prüfung. Speichert noch keinen Wissenseintrag. Die lokale Modellarbeit teilt sich die bestehende Inferenzsperre; ein zweiter Website-Import wird während eines laufenden Imports abgewiesen. |
 | `POST /api/knowledge/delete` | `id`; löscht einen Wissenseintrag. |
 | `POST /api/gmail/configure` | Importiertes JSON des Desktop-OAuth-Clients. |
 | `POST /api/gmail/connect` | Liefert die Google-Anmelde-URL. |
@@ -381,6 +389,7 @@ Unter Windows kann für die erste Zeile `py -3` statt `python3` verwendet werden
 | `tests/test_auth.py` | Sichere OAuth-Fehlerhinweise und erneute Anmeldung mit Kontoprüfung und Datenerhalt. |
 | `tests/test_container.py` | Container-Konfiguration, Modellvorbereitung, Fehler-/Abbruchverhalten und Instanzsperre. |
 | `tests/test_profile.py` | Anzeige gespeicherter Analyseergebnisse, gezielte Übernahme, Kontoprüfung und Schutz neuerer Bearbeitungen. |
+| `tests/test_website.py` | Öffentliche Zieladressen, DNS-/TLS-Bindung, Robots-Regeln, Weiterleitungen, Textgrenzen, belegte KI-Auszüge und Vorschau vor dem Speichern. |
 
 Die Tests verwenden temporäre Datenbanken, einen lokalen Testserver und simulierte Gmail-/Ollama-Antworten. Sie benötigen keine echten Google-Zugangsdaten und beweisen weder die Qualität eines bestimmten Modells noch die Kompatibilität mit jeder GPU oder zukünftigen Google-Änderungen. Eine reale Integration sollte mit einem dafür vorgesehenen Testkonto und persönlich geprüften Entwürfen getestet werden.
 
@@ -405,8 +414,9 @@ Bei Erweiterungen insbesondere erhalten: einmalige Erstanalyse mit gespeicherten
 | Versand nicht eindeutig bestätigt | Zuerst Gmail „Gesendet“ prüfen. `send_uncertain` sperrt weitere Versuche, um doppelte Antworten zu vermeiden. |
 | Nach Datenordnerwechsel beginnt die Analyse erneut | Der Abschlussmerker liegt im bisherigen Datenordner. Den vorgesehenen bestehenden Ordner verwenden. |
 | Manuell eingetragenes Unternehmenswissen wurde nach der Erstanalyse nicht ersetzt | Das schützt eigene Angaben. Über „Analyseergebnisse ansehen“ die erkannten Werte prüfen und gewünschte Felder ausdrücklich übernehmen. |
+| Website lässt sich nicht einlesen | Direkte öffentliche HTTPS-Adresse prüfen. Interne Adressen, Lesesperren, Anmeldung, reine JavaScript-Seiten und nicht unterstützte Downloads werden nicht umgangen. Alternativ gewünschten Text als TXT/Markdown importieren. |
 
-Der aktuelle Stand ist ein Entwicklerprototyp. Es gibt keinen Installer, automatische Systemstart-Einrichtung, Teamserver, Kalenderabgleich, Website-Crawler, PDF-/Office-Anhangsparser oder Modelltraining. Verarbeitung und Abruf laufen nur bei aktiver App und wachem Rechner. Website-Texte können manuell als Wissen eingefügt werden. Lange Gesprächsinhalte werden für das Modell budgetiert; die normale Gesprächsdarstellung begrenzt einzelne Nachrichtentexte auf 100.000 Zeichen, während der Erstimport Nachrichtentexte ohne diese Zeichenbegrenzung archiviert.
+Der aktuelle Stand ist ein Entwicklerprototyp. Es gibt keinen Installer, automatische Systemstart-Einrichtung, Teamserver, Kalenderabgleich, JavaScript-Renderer für Websites, PDF-/Office-Anhangsparser oder Modelltraining. Verarbeitung und Abruf laufen nur bei aktiver App und wachem Rechner. Websites können begrenzt eingelesen oder ihre Texte manuell als Wissen eingefügt werden. Lange Gesprächsinhalte werden für das Modell budgetiert; die normale Gesprächsdarstellung begrenzt einzelne Nachrichtentexte auf 100.000 Zeichen, während der Erstimport Nachrichtentexte ohne diese Zeichenbegrenzung archiviert.
 
 Ein Sprachmodell kann unbelegte Aussagen oder veraltete Angaben erzeugen. Besonders das einmalig abgeleitete Profil muss nach Änderungen am Unternehmen manuell gepflegt werden. Die lokalen Prüfungen unterstützen diese Kontrolle, ersetzen sie aber nicht.
 

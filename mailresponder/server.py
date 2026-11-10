@@ -106,6 +106,8 @@ def handler_for(app, local_token):
                     result["applied"] = app.apply_learned_profile(data.get("account"), data.get("fields"), data.get("expected"))
                 elif path == "/api/knowledge":
                     result["id"] = app.store.save_document(data.get("title", ""), data.get("content", ""), data.get("id"))
+                elif path == "/api/knowledge/website":
+                    result.update(app.import_website(data.get("url")))
                 elif path == "/api/knowledge/delete":
                     app.store.delete_document(data.get("id", ""))
                 elif path == "/api/gmail/configure":

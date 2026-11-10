@@ -74,6 +74,20 @@ class HTTPTests(unittest.TestCase):
         self.assertTrue(any(d["id"]==doc_id for d in state["documents"]))
         self.assertNotIn("access_token",state["gmail"])
 
+    def test_website_import_is_a_protected_preview(self):
+        preview = {"title":"Website: Testfirma", "content":"Ausgelesene Unternehmensinformationen.",
+                   "sources":["https://firma.example/"], "warnings":[], "facts_count":1}
+        before = len(self.app.store.documents())
+        with patch.object(self.app, "import_website", return_value=preview) as importer:
+            self.assertEqual(self.call("/api/knowledge/website","POST",{"url":"firma.example"},token="")[0],403)
+            importer.assert_not_called()
+            status,body,_ = self.call("/api/knowledge/website","POST",{"url":"firma.example"})
+            self.assertEqual(status,200)
+            self.assertEqual(json.loads(body)["content"],preview["content"])
+            importer.assert_called_once_with("firma.example")
+        self.assertEqual(len(self.app.store.documents()),before)
+        self.assertEqual(self.call("/api/knowledge/website","POST",{"url":"file:///etc/passwd"})[0],400)
+
     def test_local_edit_does_not_require_a_model_or_gmail(self):
         status,_,_=self.call("/api/thread/edit","POST",{"id":"demo-angebot","text":"Meine eigene Antwort"})
         self.assertEqual(status,200)

@@ -80,3 +80,10 @@
 .profile-choice-values p{font-size:12px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}
 form[data-form="profile"] .modal-actions{margin-top:20px;flex-wrap:wrap}
 @media(max-width:570px){.profile-choice-values{grid-template-columns:minmax(0,1fr);gap:12px}.profile-results{max-height:48vh}}
+
+.knowledge-import-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.website-url{margin-top:20px}
+.website-notes{background:#f1f7f3;border:1px solid #dfe8e2;border-radius:9px;padding:12px 14px;margin-bottom:18px}
+.website-notes p{font-size:11px;line-height:1.7;color:#607065;overflow-wrap:anywhere}
+.website-notes p+p{margin-top:7px}
+@media(max-width:570px){.knowledge-import-actions{justify-content:flex-start}.section-heading:has(.knowledge-import-actions){align-items:flex-start;flex-direction:column;gap:12px}}

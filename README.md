@@ -6,6 +6,8 @@ Antworten lassen sich im Rich-Text-Editor bearbeiten, als Gmail-Entwurf speicher
 
 Unter **Analyseergebnisse ansehen** lassen sich erkannte Unternehmens- und Stilangaben mit den bisherigen Werten vergleichen und einzeln übernehmen. Manuelle Angaben bleiben bis zur bewussten Auswahl erhalten; eine erneute Postfachanalyse ist dafür nicht nötig.
 
+Über **Unternehmenswissen → Website importieren** können öffentlich sichtbare Website-Texte einschließlich passender Unternehmensseiten eingelesen werden. Die lokale KI wählt belegte Textstellen aus; vor dem Speichern lassen sich alle Inhalte bearbeiten. Quellenadressen bleiben im Wissenseintrag nachvollziehbar.
+
 ## Dokumentation
 
 Die **[Projektdokumentation](DOKUMENTATION.md)** erklärt Einrichtung, Architektur, Datenfluss, Datenbank, lokale API, Tests und Fehlerbehebung. Sie richtet sich auch an Entwickler, die das Projekt noch nicht kennen.

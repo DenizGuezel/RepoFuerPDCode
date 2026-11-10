@@ -9,6 +9,7 @@ from .store import DEFAULTS, EMPTY_DRAFT, LOCKED_SEND_STATES, PROFILE_FIELDS, SE
 from .rich import sanitize_draft_html
 from .examples import seed_examples
 from .learning import MailboxLearner
+from .website import WebsiteReader, website_document, website_facts
 
 
 class Application:
@@ -22,6 +23,7 @@ class Application:
         self.sync_lock = threading.Lock()
         self.write_lock = threading.RLock()
         self.inference_lock = threading.Lock()
+        self.website_lock = threading.Lock()
         self.send_confirmation = None
         self.cancel_sync = threading.Event()
         self.disconnecting = False
@@ -98,6 +100,27 @@ class Application:
             self.store.event("Ausgewählte Analyseergebnisse wurden in das Profil übernommen.")
             self.changed.set()
             return applied
+
+    def import_website(self, url):
+        if not self.website_lock.acquire(blocking=False):
+            raise ServiceError("Eine Website wird bereits ausgelesen. Bitte warte kurz.")
+        try:
+            pages, warnings = WebsiteReader().read(url)
+            facts = []
+            if self.inference_lock.acquire(blocking=False):
+                try:
+                    facts = website_facts(self.model, pages, self.store.settings())
+                except (ValueError, ServiceError):
+                    warnings.append("Die lokale KI-Auswahl war nicht verfügbar. Die ausgelesenen Website-Texte stehen vollständig zur Prüfung bereit.")
+                finally:
+                    self.inference_lock.release()
+            else:
+                warnings.append("Deine lokale KI bearbeitet gerade einen anderen Auftrag. Du kannst die Website-Texte direkt prüfen und speichern.")
+            document = website_document(pages, facts)
+            self.store.event("Eine Website wurde zur Prüfung eingelesen.")
+            return {**document,"sources":[page["url"] for page in pages],"warnings":warnings,"facts_count":len(facts)}
+        finally:
+            self.website_lock.release()
 
     def enqueue(self, thread_id):
         thread = self.store.thread(thread_id)
