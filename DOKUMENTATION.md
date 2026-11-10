@@ -197,6 +197,8 @@ Bei abgelaufener Freigabe unter **Einstellungen → Gmail → Erneut anmelden** 
 
 **Wissensimport:** TXT, Markdown und CSV werden als Text übernommen, nicht als strukturierte Fachdatenbank. Die Dateiauswahl begrenzt Imports auf 1 MB; ein gespeicherter Wissenseintrag wird auf 200.000 Zeichen begrenzt. Anhänge von E-Mails werden nicht als Wissen eingelesen.
 
+**Analyseergebnisse übernehmen:** Nach abgeschlossener Erstanalyse öffnet **Analyseergebnisse ansehen** die gespeicherten Vorschläge zum Unternehmen und Schreibstil. Bereits vor oder während der Erstanalyse manuell gepflegte Felder bleiben zunächst erhalten. Im Dialog stehen aktuelle und erkannte Werte nebeneinander. Gewünschte Felder einzeln markieren und mit **Auswahl übernehmen** bestätigen; alle übrigen Angaben bleiben unverändert. Bereits übereinstimmende Werte sind gekennzeichnet. Eine neue Postfachanalyse ist dafür nicht nötig, auch bei einem schon früher abgeschlossenen Import. Vor dem Öffnen ungespeicherte Formularänderungen speichern. Wurde ein ausgewähltes Feld während der Prüfung in einem anderen Fenster geändert oder das Konto gewechselt, stoppt die Übernahme und der Dialog muss neu geöffnet werden.
+
 ## 5. Architektur und Quellcode
 
 Die Anwendung besteht aus einem lokalen Python-Prozess, einer Browseroberfläche, SQLite und einem getrennten lokalen Ollama-Dienst. Gmail wird ausschließlich vom Backend angesprochen.
@@ -339,6 +341,7 @@ Die API ist die interne Schnittstelle zur Browseroberfläche, kein öffentlich e
 | `GET /api/state` | Einstellungen, Modell-/Gmail-Status, Importfortschritt, Gespräche, Dokumente und Aktivitäten. |
 | `GET /api/health` | Prüft die lokale Modellverbindung. |
 | `POST /api/settings` | Änderbare Einstellungen entsprechend `store.DEFAULTS`. |
+| `POST /api/profile/apply` | `account`, `fields` als Liste ausgewählter Profilfelder und `expected` als Objekt mit deren zuvor angezeigten aktuellen Werten. Übernimmt nur gespeicherte Ergebnisse der abgeschlossenen Erstanalyse dieses Kontos. Bei zwischenzeitlicher Bearbeitung oder Kontowechsel HTTP 409; keine teilweise Übernahme. |
 | `POST /api/knowledge` | `title`, `content`, optional `id`; legt Wissen an oder aktualisiert es. |
 | `POST /api/knowledge/delete` | `id`; löscht einen Wissenseintrag. |
 | `POST /api/gmail/configure` | Importiertes JSON des Desktop-OAuth-Clients. |
@@ -377,6 +380,7 @@ Unter Windows kann für die erste Zeile `py -3` statt `python3` verwendet werden
 | `tests/test_gmail_quota.py` | Quotenverteilung, Drosselung und Wiederholungsgrenzen. |
 | `tests/test_auth.py` | Sichere OAuth-Fehlerhinweise und erneute Anmeldung mit Kontoprüfung und Datenerhalt. |
 | `tests/test_container.py` | Container-Konfiguration, Modellvorbereitung, Fehler-/Abbruchverhalten und Instanzsperre. |
+| `tests/test_profile.py` | Anzeige gespeicherter Analyseergebnisse, gezielte Übernahme, Kontoprüfung und Schutz neuerer Bearbeitungen. |
 
 Die Tests verwenden temporäre Datenbanken, einen lokalen Testserver und simulierte Gmail-/Ollama-Antworten. Sie benötigen keine echten Google-Zugangsdaten und beweisen weder die Qualität eines bestimmten Modells noch die Kompatibilität mit jeder GPU oder zukünftigen Google-Änderungen. Eine reale Integration sollte mit einem dafür vorgesehenen Testkonto und persönlich geprüften Entwürfen getestet werden.
 
@@ -400,6 +404,7 @@ Bei Erweiterungen insbesondere erhalten: einmalige Erstanalyse mit gespeicherten
 | Gmail drosselt Abrufe | Wartezeit ablaufen lassen; wiederholtes Klicken beschleunigt die Quote nicht. Fortschritt bleibt gespeichert. |
 | Versand nicht eindeutig bestätigt | Zuerst Gmail „Gesendet“ prüfen. `send_uncertain` sperrt weitere Versuche, um doppelte Antworten zu vermeiden. |
 | Nach Datenordnerwechsel beginnt die Analyse erneut | Der Abschlussmerker liegt im bisherigen Datenordner. Den vorgesehenen bestehenden Ordner verwenden. |
+| Manuell eingetragenes Unternehmenswissen wurde nach der Erstanalyse nicht ersetzt | Das schützt eigene Angaben. Über „Analyseergebnisse ansehen“ die erkannten Werte prüfen und gewünschte Felder ausdrücklich übernehmen. |
 
 Der aktuelle Stand ist ein Entwicklerprototyp. Es gibt keinen Installer, automatische Systemstart-Einrichtung, Teamserver, Kalenderabgleich, Website-Crawler, PDF-/Office-Anhangsparser oder Modelltraining. Verarbeitung und Abruf laufen nur bei aktiver App und wachem Rechner. Website-Texte können manuell als Wissen eingefügt werden. Lange Gesprächsinhalte werden für das Modell budgetiert; die normale Gesprächsdarstellung begrenzt einzelne Nachrichtentexte auf 100.000 Zeichen, während der Erstimport Nachrichtentexte ohne diese Zeichenbegrenzung archiviert.
 

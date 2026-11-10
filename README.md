@@ -4,6 +4,8 @@ Lokaler Gmail-Assistent für Selbstständige und kleine Unternehmen. Die Anwendu
 
 Antworten lassen sich im Rich-Text-Editor bearbeiten, als Gmail-Entwurf speichern und nach ausdrücklicher Bestätigung direkt senden. Die Automatik versendet keine E-Mails.
 
+Unter **Analyseergebnisse ansehen** lassen sich erkannte Unternehmens- und Stilangaben mit den bisherigen Werten vergleichen und einzeln übernehmen. Manuelle Angaben bleiben bis zur bewussten Auswahl erhalten; eine erneute Postfachanalyse ist dafür nicht nötig.
+
 ## Dokumentation
 
 Die **[Projektdokumentation](DOKUMENTATION.md)** erklärt Einrichtung, Architektur, Datenfluss, Datenbank, lokale API, Tests und Fehlerbehebung. Sie richtet sich auch an Entwickler, die das Projekt noch nicht kennen.

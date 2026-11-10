@@ -5,7 +5,7 @@ import time
 from .gmail import Gmail, make_reply, parse_thread, reply_envelope
 from .model import LocalModel
 from .net import ServiceError
-from .store import DEFAULTS, EMPTY_DRAFT, LOCKED_SEND_STATES, SEND_UNCERTAIN, Store
+from .store import DEFAULTS, EMPTY_DRAFT, LOCKED_SEND_STATES, PROFILE_FIELDS, SEND_UNCERTAIN, Store
 from .rich import sanitize_draft_html
 from .examples import seed_examples
 from .learning import MailboxLearner
@@ -48,6 +48,8 @@ class Application:
         onboarding={k:initial[k] for k in ("stage","listed","downloaded","sent","parts_total","parts_done","error","completed")}
         onboarding["imported"]=initial.get("imported",0)
         onboarding["profile_fields"]=list(initial["profile"])
+        onboarding["profile"] = {key: value for key, value in initial["profile"].items()
+                                 if key in PROFILE_FIELDS and isinstance(value, str) and value.strip()}
         threads = self.store.threads()
         for thread in threads:
             thread["reply_recipient"], _ = reply_envelope(thread)
@@ -89,6 +91,13 @@ class Application:
         self.store.save_user_settings(values)
         self.health_cache = (self.health_cache[0], 0)
         self.changed.set()
+
+    def apply_learned_profile(self, account, fields, expected):
+        with self.write_lock:
+            applied = self.store.apply_learned_profile(account, fields, expected)
+            self.store.event("Ausgewählte Analyseergebnisse wurden in das Profil übernommen.")
+            self.changed.set()
+            return applied
 
     def enqueue(self, thread_id):
         thread = self.store.thread(thread_id)

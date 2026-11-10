@@ -7,6 +7,10 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
+from .net import ServiceError
+
+
+PROFILE_FIELDS = ("company", "description", "tone", "salutation", "length", "signature", "style_examples", "style_analysis")
 
 LOCKED_SEND_STATES = {"sending", "sent", "send_uncertain"}
 SEND_UNCERTAIN = "Gmail hat den Versand nicht eindeutig bestätigt. Prüfe den Ordner „Gesendet“ in Gmail, bevor du erneut antwortest."
@@ -112,7 +116,7 @@ class Store:
                     db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", (key, json.dumps(value)))
 
     def save_user_settings(self, changes):
-        profile_keys = {"company", "description", "tone", "salutation", "length", "signature", "style_examples", "style_analysis"}
+        profile_keys = set(PROFILE_FIELDS)
         with self.connection() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT value FROM settings WHERE key='manual_profile_fields'").fetchone()
@@ -219,6 +223,31 @@ class Store:
             row=db.execute("SELECT stage,profile FROM onboarding WHERE account=?",(account,)).fetchone()
             if row and row["stage"]=="complete":
                 self._apply_profile(db,account,json.loads(row["profile"]))
+
+    def apply_learned_profile(self, account, fields, expected):
+        if (not isinstance(account, str) or not account or not isinstance(fields, list) or not fields
+                or any(not isinstance(field, str) or field not in PROFILE_FIELDS for field in fields)
+                or len(set(fields)) != len(fields) or not isinstance(expected, dict)
+                or set(expected) != set(fields) or any(not isinstance(value, str) for value in expected.values())):
+            raise ValueError("Bitte wähle die gewünschten Profilfelder aus.")
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            values = {row["key"]: json.loads(row["value"]) for row in db.execute("SELECT * FROM settings")}
+            if values.get("gmail_email") != account:
+                raise ServiceError("Das Gmail-Konto hat sich geändert. Bitte öffne die Analyseergebnisse erneut.")
+            row = db.execute("SELECT stage,profile FROM onboarding WHERE account=?", (account,)).fetchone()
+            if not row or row["stage"] != "complete":
+                raise ValueError("Die einmalige Postfachanalyse ist noch nicht abgeschlossen.")
+            profile = json.loads(row["profile"])
+            if any(not isinstance(profile.get(field), str) or not profile[field].strip() for field in fields):
+                raise ValueError("Für eines der gewählten Felder liegt kein Analyseergebnis vor.")
+            if any(values.get(field, DEFAULTS[field]) != expected[field] for field in fields):
+                raise ServiceError("Dein Profil wurde inzwischen bearbeitet. Bitte öffne die Analyseergebnisse erneut.")
+            manual = set(values.get("manual_profile_fields", [])) | set(fields)
+            for field in fields:
+                db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", (field, json.dumps(profile[field])))
+            db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("manual_profile_fields", json.dumps(sorted(manual))))
+        return fields
 
     def event(self, message):
         with self.connection() as db:

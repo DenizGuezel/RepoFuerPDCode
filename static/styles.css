@@ -67,3 +67,16 @@
 .send-details dt { font-weight: 600; }
 .send-details dd { margin: 0; }
 .status.send_uncertain { background: #fbf2e1; color: #8a6d34; }
+
+/* Review stored onboarding findings without overwriting unselected user fields. */
+.profile-intro{font-size:12px;line-height:1.7;color:#718177}
+.profile-results{display:grid;gap:12px;max-height:54vh;overflow:auto;margin:18px 0;padding-right:4px}
+.profile-choice{border:1px solid var(--line);border-radius:10px;padding:15px;background:#fff}
+.profile-choice.is-current{background:#f6f8f6}
+.profile-choice label{display:flex;align-items:flex-start;gap:10px;font-size:12px;color:#486451;cursor:pointer}
+.profile-choice input{width:17px;height:17px;margin:1px 0 0;accent-color:var(--green);flex-shrink:0}
+.profile-choice-values{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin:13px 0 0 27px}
+.profile-choice-values span{display:block;font-size:10px;color:#84958a;margin-bottom:5px}
+.profile-choice-values p{font-size:12px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}
+form[data-form="profile"] .modal-actions{margin-top:20px;flex-wrap:wrap}
+@media(max-width:570px){.profile-choice-values{grid-template-columns:minmax(0,1fr);gap:12px}.profile-results{max-height:48vh}}

@@ -41,6 +41,7 @@ const routes = {overview:'Übersicht', inbox:'Postfach', knowledge:'Unternehmens
 const statusLabels = {ready:'Entwurf bereit', saved:'In Gmail gespeichert', review:'Braucht dich', new:'Neu eingegangen', queued:'In Warteschlange', generating:'Wird vorbereitet', skipped:'Keine Antwort nötig', error:'Prüfung erforderlich', protected:'Entwurf geschützt', sending:'Wird gesendet', sent:'Gesendet', send_uncertain:'Versand prüfen'};
 let state, route = location.hash.slice(1) || 'overview', mode = localStorage.getItem('amr-view') || 'demo', selected = null, previewTab = 'draft', search = '', statusFilter = '', formDirty = false, refreshing = false, lastRenderedSnapshot = '';
 const pendingDrafts = new Map();
+const profileLabels = {company:'Unternehmensname', description:'Unternehmensbeschreibung', tone:'Tonalität', salutation:'Anrede', length:'Antwortlänge', signature:'Signatur', style_examples:'Beispielantworten', style_analysis:'Schreibstil'};
 
 async function api(path, data) {
   const response = await fetch(path, {method: data === undefined ? 'GET' : 'POST', headers: {'X-Local-Token': token, ...(data !== undefined ? {'Content-Type':'application/json'} : {})}, ...(data !== undefined ? {body:JSON.stringify(data)} : {})});
@@ -94,7 +95,7 @@ function onboardingCard(){
   const o=state.onboarding;
   if(!o)return '';
   if(!state.gmail.connected)return `<section class="onboarding-card"><span class="onboarding-icon">${icon('spark')}</span><div class="onboarding-copy"><h3>Einmal verbinden. Dein Unternehmen kennenlernen lassen.</h3><p>Beim ersten Verbinden wird das gesamte Gmail-Postfach lokal geladen – einschließlich gesendeter E-Mails. Deine KI erkennt daraus Unternehmen und Schreibstil.</p></div><a href="#settings" class="btn small">Gmail einrichten ${icon('arrow')}</a></section>`;
-  if(o.stage==='complete')return `<section class="onboarding-card complete"><span class="onboarding-icon">${icon('check')}</span><div class="onboarding-copy"><h3>Dein Postfach ist einmalig eingelesen.</h3><p>${Number(o.imported).toLocaleString('de-DE')} E-Mails geladen · ${Number(o.sent).toLocaleString('de-DE')} gesendete Mails · Unternehmen und Schreibstil lokal analysiert. Die Erstanalyse wird bei späteren Starts nicht wiederholt.</p>${!state.settings.company||!state.settings.description?'<p>Einige Unternehmensangaben waren nicht eindeutig erkennbar. Du kannst sie im Profil ergänzen.</p>':''}</div><a href="#knowledge" class="btn small">Profil ansehen ${icon('arrow')}</a></section>`;
+  if(o.stage==='complete')return `<section class="onboarding-card complete"><span class="onboarding-icon">${icon('check')}</span><div class="onboarding-copy"><h3>Dein Postfach ist einmalig eingelesen.</h3><p>${Number(o.imported).toLocaleString('de-DE')} E-Mails geladen · ${Number(o.sent).toLocaleString('de-DE')} gesendete Mails · Unternehmen und Schreibstil lokal analysiert. Die Erstanalyse wird bei späteren Starts nicht wiederholt.</p>${!state.settings.company||!state.settings.description?'<p>Prüfe die Analyseergebnisse oder ergänze fehlende Unternehmensangaben selbst.</p>':''}</div>${button('review-profile','Analyseergebnisse ansehen','spark')}</section>`;
   const title={pending:'Dein Assistent lernt dich kennen.',listing:'Dein gesamtes Postfach wird erfasst.',downloading:'Deine E-Mails werden lokal geladen.',analyzing:'Dein Unternehmen und dein Schreibstil werden erkannt.'}[o.stage]||'Einmalige Einrichtung';
   const detail=o.stage==='listing'?`${o.listed.toLocaleString('de-DE')} Nachrichten erfasst, einschließlich Gesendet und Archiv.`:o.stage==='downloading'?`${o.downloaded.toLocaleString('de-DE')} von ${o.listed.toLocaleString('de-DE')} Nachrichten geladen.`:o.stage==='analyzing'?`${o.parts_done.toLocaleString('de-DE')} von ${o.parts_total.toLocaleString('de-DE')} Textabschnitten lokal ausgewertet.`:'Die Einrichtung startet nach der ersten Gmail-Verbindung automatisch.';
   const percent=o.stage==='downloading'&&o.listed?o.downloaded/o.listed*100:o.stage==='analyzing'&&o.parts_total?o.parts_done/o.parts_total*100:0;
@@ -236,6 +237,24 @@ function settingsPage(){const s=state.settings,m=state.model;const names=m.model
 
 function openDocument(doc){modal.innerHTML=`<form data-form="document"><div class="modal-head"><h2 id="modal-title">${doc?.id?'Wissen bearbeiten':'Wissen ergänzen'}</h2><button type="button" class="icon-btn" data-action="close-modal" aria-label="Schließen">${icon('close')}</button></div><input type="hidden" name="id" value="${esc(doc?.id||'')}">${input('title','Titel',doc?.title||'')}${textarea('content','Wissensinhalt',doc?.content||'','Zum Beispiel: Leistungen, Konditionen oder Antworten auf häufige Fragen.',11)}<div class="modal-actions"><button type="button" class="btn" data-action="close-modal">Abbrechen</button><button class="btn primary" type="submit">${icon('check')}Lokal speichern</button></div></form>`;modal.showModal();}
 
+function openProfileReview(){
+  const profile=state.onboarding.profile||{};
+  const entries=Object.entries(profileLabels).filter(([field])=>typeof profile[field]==='string'&&profile[field].trim());
+  const expected=Object.fromEntries(entries.map(([field])=>[field,state.settings[field]||'']));
+  modal.innerHTML=`<form data-form="profile"><div class="modal-head"><h2 id="modal-title">Deine Analyseergebnisse</h2><button type="button" class="icon-btn" data-action="close-modal" aria-label="Schließen">${icon('close')}</button></div>
+    <p class="profile-intro" id="profile-help">Diese Angaben wurden beim einmaligen Einlesen aus deinen E-Mails erkannt. Wähle aus, welche Werte deine aktuellen Angaben ersetzen sollen. Nicht ausgewählte Felder bleiben erhalten.</p>
+    <div class="profile-results">${entries.map(([field,label])=>{
+      const same=expected[field]===profile[field];
+      return `<section class="profile-choice${same?' is-current':''}"><label><input type="checkbox" name="fields" value="${field}" aria-describedby="profile-help" ${same?'disabled':''}><strong>${esc(label)}${same?' · Bereits im Profil':''}</strong></label><div class="profile-choice-values"><div><span>Aktuell gespeichert</span><p>${expected[field]?esc(expected[field]):'<em>Noch keine Angabe</em>'}</p></div><div><span>Aus E-Mails erkannt</span><p>${esc(profile[field])}</p></div></div></section>`;
+    }).join('')||'<p class="profile-intro">Es wurden keine eindeutigen Profilangaben erkannt. Du kannst dein Unternehmenswissen und deinen Schreibstil selbst ergänzen.</p>'}</div>
+    <p class="profile-intro">Die Übernahme startet keine neue Postfachanalyse. Historische Angaben können veraltet sein; prüfe die ausgewählten Werte.</p>
+    <div class="modal-actions"><button type="button" class="btn" data-action="close-modal">Schließen</button><button type="submit" class="btn primary" disabled>Auswahl übernehmen</button></div></form>`;
+  const form=modal.querySelector('form');
+  form.profileExpected=expected;
+  form.profileAccount=state.gmail.email;
+  modal.showModal();
+}
+
 document.addEventListener('click',async event=>{
   if(event.target.closest('a[href="#main"]')){event.preventDefault();document.getElementById('main')?.focus();return;}
   const tool = event.target.closest('[data-format]');
@@ -262,6 +281,10 @@ document.addEventListener('click',async event=>{
   if(action==='setup-gmail'){location.hash='settings';setTimeout(()=>document.getElementById('gmail-setup')?.scrollIntoView({behavior:'smooth',block:'center'}),70);return;}
   if(action==='add-document'){openDocument();return;}
   if(action==='edit-document'){openDocument(state.documents.find(d=>d.id===id));return;}
+  if(action==='review-profile'){
+    if(formDirty){toast('Bitte speichere zuerst deine Änderungen, bevor du die Analyseergebnisse öffnest.',true);return;}
+    openProfileReview();return;
+  }
   if(action==='close-modal'){modal.close();return;}
   if(action==='import-document'){document.getElementById('knowledge-file').click();return;}
   if(action==='import-google'){document.getElementById('google-file').click();return;}
@@ -311,11 +334,18 @@ document.addEventListener('submit',async event=>{
     if(form.dataset.form==='settings'){
       for(const key of ['context_size','sync_seconds'])if(key in data)data[key]=Number(data[key]);
       await api('/api/settings',data);formDirty=false;toast('Deine Einstellungen sind gespeichert.');
+    }else if(form.dataset.form==='profile'){
+      const fields=new FormData(form).getAll('fields');
+      const expected=Object.fromEntries(fields.map(field=>[field,form.profileExpected[field]]));
+      await api('/api/profile/apply',{account:form.profileAccount,fields,expected});
+      modal.close();toast('Die ausgewählten Analyseergebnisse sind übernommen.');
     }else{
       if(!data.id)delete data.id;await api('/api/knowledge',data);modal.close();toast('Dein Wissen ist lokal gespeichert.');
     }
     await refresh(true);
-  }catch(error){toast(error.message,true);}finally{if(submit?.isConnected)submit.disabled=false;}
+  }catch(error){toast(error.message,true);}finally{
+    if(submit?.isConnected)submit.disabled=form.dataset.form==='profile'&&!form.querySelector('input[name="fields"]:checked');
+  }
 });
 document.addEventListener('input',event=>{
   if(event.target.id==='draft-editor'){rememberDraft(event.target);return;}
@@ -325,6 +355,8 @@ document.addEventListener('input',event=>{
   if(event.target.closest('[data-form="settings"]'))formDirty=true;
 });
 document.addEventListener('change',async event=>{
+  const profileForm=event.target.closest('[data-form="profile"]');
+  if(profileForm){profileForm.querySelector('[type="submit"]').disabled=!profileForm.querySelector('input[name="fields"]:checked');return;}
   if(event.target.id==='status-filter'){statusFilter=event.target.value;render();return;}
   if(event.target.closest('[data-form="settings"]'))formDirty=true;
   if(!['knowledge-file','google-file'].includes(event.target.id))return;

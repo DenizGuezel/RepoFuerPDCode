@@ -210,6 +210,22 @@ class LearningTests(unittest.TestCase):
         self.assertEqual(values["tone"],"Mein eigener Ton")
         self.assertIn("Websites",values["description"])
 
+    def test_stored_findings_can_be_selected_without_repeating_the_analysis(self):
+        self.app.save_settings({"company":"Meine Firma","signature":"Meine Signatur"})
+        self.app.sync()
+        state = self.app.state()
+        self.assertEqual(state["settings"]["company"],"Meine Firma")
+        self.assertEqual(state["onboarding"]["profile"]["company"],"Nordlicht Studio")
+        batches, pages, gets = len(self.model.batches),list(self.gmail.pages),self.gmail.gets.copy()
+        completed = self.app.store.onboarding(ACCOUNT)["completed"]
+        self.app.apply_learned_profile(ACCOUNT,["company"],{"company":"Meine Firma"})
+        restarted = self.restart()
+        restarted.sync()
+        self.assertEqual(restarted.store.settings()["company"],"Nordlicht Studio")
+        self.assertEqual(restarted.store.settings()["signature"],"Meine Signatur")
+        self.assertEqual((len(self.model.batches),self.gmail.pages,self.gmail.gets),(batches,pages,gets))
+        self.assertEqual(restarted.store.onboarding(ACCOUNT)["completed"],completed)
+
     def test_clearing_a_field_manually_does_not_repopulate_it_on_reconnect(self):
         self.app.sync()
         self.app.save_settings({"tone":""})

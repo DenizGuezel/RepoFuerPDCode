@@ -102,6 +102,8 @@ def handler_for(app, local_token):
                 result = {"ok": True}
                 if path == "/api/settings":
                     app.save_settings(data)
+                elif path == "/api/profile/apply":
+                    result["applied"] = app.apply_learned_profile(data.get("account"), data.get("fields"), data.get("expected"))
                 elif path == "/api/knowledge":
                     result["id"] = app.store.save_document(data.get("title", ""), data.get("content", ""), data.get("id"))
                 elif path == "/api/knowledge/delete":
